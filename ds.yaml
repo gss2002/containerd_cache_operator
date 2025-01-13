@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: containerd-cache-operator
+  namespace: kube-system  # Assuming you want to run this in the kube-system namespace
+spec:
+  selector:
+    matchLabels:
+      name: containerd-cache-operator
+  template:
+    metadata:
+      labels:
+        name: containerd-cache-operator
+    spec:
+      hostNetwork: true  # For accessing the host's config.toml
+      hostPID: true      # Allows the container to see all processes on the host
+      imagePullSecrets:
+      - name: registry-devops-example
+      containers:
+      - name: containerd-cache-operator
+        image: registry.devops.example.org/k8s/images/containerd-cache:latest
+        securityContext:
+          privileged: true  # Required for file modifications at the host level
+          seLinuxOptions:
+            level: "s0"
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /etc/containerd/
+          name: containerd-conf
+        - mountPath: /run/containerd/containerd.sock
+          name: containerd-socket
+        - name: containerd-reg-config
+          mountPath: "/etc/containerd-config/"
+          readOnly: true
+        - name: host-root
+          mountPath: "/host"
+          readOnly: true
+          mountPropagation: HostToContainer
+      volumes:
+      - name: containerd-reg-config
+        configMap:
+          name: containerd-reg-config
+      - hostPath:
+          path: /etc/containerd/
+          type: ""
+        name: containerd-conf
+      - hostPath:
+          path: /run/containerd/containerd.sock
+          type: ""
+        name: containerd-socket
+      - hostPath:
+          path: /
+        name: host-root
+      nodeSelector:
+        kubernetes.io/os: linux
+      priorityClassName: system-node-critical
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      - effect: NoSchedule
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists

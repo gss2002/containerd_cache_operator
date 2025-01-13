@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: containerd-reg-config
+  namespace: kube-system
+data:
+  registries: |-
+    docker.io=docker.registry.devops.example.org
+    ghcr.io=ghcr.registry.devops.example.org
+    nvcr.io=nvcr.registry.devops.example.org
+    quay.io=quay.registry.devops.example.org
+    registry.k8s.io=k8s.registry.devops.example.org
