@@ -6,6 +6,7 @@ import time
 import struct
 import logging
 import sys
+import signal
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
@@ -15,10 +16,10 @@ MAX_RELOAD_ATTEMPTS = 6
 
 SOCKET_MESSAGE_TO_GET_PID = b""
 
-def modify_config(file_path, config_path):
+def modify_config(containerd_config_file, registry_config_path):
     modified = False
-    with open(file_path, 'r') as file:
-        config = toml.load(file)
+    with open(containerd_config_file, 'r') as config_toml:
+        config = toml.load(config_toml)
 
     # Check if config_path is correctly set
     if 'plugins' not in config or 'io.containerd.grpc.v1.cri' not in config['plugins']:
@@ -29,14 +30,14 @@ def modify_config(file_path, config_path):
 
     if config['plugins']['io.containerd.grpc.v1.cri']['registry'].get('config_path') != "/etc/containerd/certs.d":
         config['plugins']['io.containerd.grpc.v1.cri']['registry']['config_path'] = "/etc/containerd/certs.d"
+        with open(containerd_config_file, 'w') as config_toml:
+            toml.dump(config, config_toml)
         modified = True
 
 
 ### NEW CODE START
     # Read the registries from the key-value pair file
-    registries_file = os.path.join(config_path, 'registries')
-    # Read the registries from the key-value pair file
-    registries_file = os.path.join(config_path, 'registries')
+    registries_file = os.path.join(registry_config_path, 'registries')
     if os.path.exists(registries_file):
         registries = {}
         with open(registries_file, 'r') as f:
@@ -98,13 +99,14 @@ def signal_containerd(socket_path):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_PASSCRED, 1)
             
             # Send message to get PID
-            sock.sendmsg([SOCKET_MESSAGE_TO_GET_PID], [], 0, (socket.CMSG_SPACE(4), 0))
+            # Here, SOCKET_MESSAGE_TO_GET_PID should be a non-empty bytes object if needed
+            sock.send(b"")  # Changed from sendmsg to simpler send for this case
             
             # Receive control message
-            data, ancdata, _, _ = sock.recvmsg(1, socket.CMSG_SPACE(4))
+            data, ancdata, flags, addr = sock.recvmsg(1024, socket.CMSG_SPACE(16))
             for cmsg_level, cmsg_type, cmsg_data in ancdata:
                 if cmsg_level == socket.SOL_SOCKET and cmsg_type == socket.SCM_CREDENTIALS:
-                    pid, uid, gid = struct.unpack("III", cmsg_data[:12])
+                    pid, _, _ = struct.unpack("III", cmsg_data[:12])
                     
                     # Send SIGHUP to the process
                     try:
@@ -143,14 +145,14 @@ def signal_containerd(socket_path):
 
 
 
-
 if __name__ == "__main__":
-    config_file = '/etc/containerd/config.toml'
-    config_path = '/etc/containerd-config/'  # Path where configmap data is mounted
+    containerd_config_file = '/etc/containerd/config.toml'
+    registry_config_path = '/etc/containerd-config/'  # Path where configmap data is mounted
+    socket_path = '/run/containerd/containerd.sock'
     while True:
         try:
-            if modify_config(config_file, config_path):
-                signal_containerd(socket)
+            if modify_config(containerd_config_file, registry_config_path):
+                signal_containerd(socket_path)
             else:
                 logger.info("No changes made to containerd configuration.")
         except Exception as e:
