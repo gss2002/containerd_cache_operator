@@ -29,7 +29,7 @@ spec:
           name: containerd-conf
         - mountPath: /run/containerd/containerd.sock
           name: containerd-socket
-        - name: containerd-reg-config
+        - name: containerd-config
           mountPath: "/etc/containerd-config/"
           readOnly: true
         - name: host-root
@@ -37,9 +37,9 @@ spec:
           readOnly: true
           mountPropagation: HostToContainer
       volumes:
-      - name: containerd-reg-config
+      - name: containerd-config
         configMap:
-          name: containerd-reg-config
+          name: containerd-config
       - hostPath:
           path: /etc/containerd/
           type: ""

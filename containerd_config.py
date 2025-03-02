@@ -16,7 +16,7 @@ MAX_RELOAD_ATTEMPTS = 6
 
 SOCKET_MESSAGE_TO_GET_PID = b""
 
-def modify_config(containerd_config_file, registry_config_path):
+def modify_config(containerd_config_file, containerd_cm_path):
     modified = False
     with open(containerd_config_file, 'r') as config_toml:
         config = toml.load(config_toml)
@@ -34,10 +34,37 @@ def modify_config(containerd_config_file, registry_config_path):
             toml.dump(config, config_toml)
         modified = True
 
+    #### HANDLE SANDBOXIMAGE CONFIG
+    with open(containerd_config_file, 'r') as config_toml:
+        config = toml.load(config_toml)
+
+    config_opts_file = os.path.join(containerd_cm_path, 'config_opts')
+    if os.path.exists(config_opts_file):
+        containerd_config_opts = {}
+        with open(config_opts_file, 'r') as f:
+            for line in f:
+                if '=' in line:
+                    key, value = line.strip().split('=', 1)
+                    containerd_config_opts[key.strip()] = value.strip()
+        logger.debug(f"Containerd ConfigOpts: {containerd_config_opts}")
+    if 'sandbox_image' in containerd_config_opts:
+        sbox_image = containerd_config_opts['sandbox_image']
+        if config['plugins']['io.containerd.grpc.v1.cri'].get('sandbox_image') != sbox_image:
+          config['plugins']['io.containerd.grpc.v1.cri']['sandbox_image'] = sbox_image
+          with open(containerd_config_file, 'w') as config_toml:
+              toml.dump(config, config_toml)
+          logger.info(f"Updated /etc/containerd/config.toml plugins.io.containerd.grpc.v1.cri sandbox_image to {sbox_image}")
+          modified = True
+        else:
+          logger.info(f"Skipping not updating /etc/containerd/config.toml plugins.io.containerd.grpc.v1.cri sandbox_image to {sbox_image}")
+    else:
+        logger.info(f"Skipping not updating /etc/containerd/config.toml sandbox_image is not set in the configmap")
+
+
 
 ### NEW CODE START
     # Read the registries from the key-value pair file
-    registries_file = os.path.join(registry_config_path, 'registries')
+    registries_file = os.path.join(containerd_cm_path, 'registries')
     if os.path.exists(registries_file):
         registries = {}
         with open(registries_file, 'r') as f:
@@ -147,11 +174,11 @@ def signal_containerd(socket_path):
 
 if __name__ == "__main__":
     containerd_config_file = '/etc/containerd/config.toml'
-    registry_config_path = '/etc/containerd-config/'  # Path where configmap data is mounted
+    containerd_cm_path = '/etc/containerd-config/'  # Path where configmap data is mounted
     socket_path = '/run/containerd/containerd.sock'
     while True:
         try:
-            if modify_config(containerd_config_file, registry_config_path):
+            if modify_config(containerd_config_file, containerd_cm_path):
                 signal_containerd(socket_path)
             else:
                 logger.info("No changes made to containerd configuration.")

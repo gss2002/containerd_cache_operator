@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: containerd-reg-config
+  name: containerd-config
   namespace: kube-system
 data:
   registries: |-
@@ -10,3 +10,5 @@ data:
     nvcr.io=nvcr.registry.devops.example.org
     quay.io=quay.registry.devops.example.org
     registry.k8s.io=k8s.registry.devops.example.org
+  config_opts: |-
+    sandbox_image=registry.k8s.io/pause:3.8
